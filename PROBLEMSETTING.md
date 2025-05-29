@@ -12,7 +12,7 @@ We propose two *non-RL* selective‐inference strategies. At each step $t$, give
 ## Dataset & Data Splitting
 
 * **Dataset:** OntoNotes 5.0 (english_v12 portion).  
-* ⁠We are using the dataset as provided by hugging face, which already incorporates a **Document-level split** of:
+* ⁠We are using the dataset as provided by Hugging Face, which already incorporates a **Document-level split** of:
   * **Training:** 80%
   * **Validation:** 10%  
   * **Test:** 10%  
