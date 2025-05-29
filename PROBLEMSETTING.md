@@ -38,10 +38,10 @@ We propose two *non-RL* selective‐inference strategies. At each step $t$, give
 
 ### Formal Objective
 
-Let $y_t$ be the ground-truth NER tags and $\hat{y}_t$ the predicted tags when NER is invoked at time $t$. Define $\mathcal{I}\subseteq\{0,1,\dots,T\}$ as the set of timesteps where **RUN_NER** occurs. We seek to minimize
+Let $y_t$ be the ground-truth NER tags and $\hat{y}_t$ the predicted tags when NER is invoked at time $t$. Define $\mathcal{I}_f\subseteq\{0,1,\dots,T\}$ be the set of invocation times determined by the invocation function $f$ (e.g., confidence thresholding or a binary classifier). We seek to minimize
 
 $$
-\mathcal{L}(\pi_{\theta}) \;=\; \mathbb{E}{\pi{\theta}}\!\Biggl[\sum_{t\in\mathcal{I}}\ell_{\mathrm{NER}}(\hat{y}_t,y_t)\;+\;\lambda\,C(\mathcal{I})\Biggr],
+\mathcal{L}(f) = \sum_{t \in \mathcal{I}_f} \ell_{\mathrm{NER}}(\hat{y}_t, y_t) + \lambda\, C(\mathcal{I}_f),
 $$
 
 where  
