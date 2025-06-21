@@ -11,7 +11,7 @@ def convert_predictions(tokens: List[str], pipeline_output: List[Dict]) -> List[
         
         # Find the tokens that correspond to this entity
         entity_tokens = entity_text.split(" ")
-        for i in range(offset, offset + len(tokens) - len(entity_tokens) + 1):
+        for i in range(offset, len(tokens) - len(entity_tokens) + 1):
             # print(f"Checking tokens: {tokens[i:i+len(entity_tokens)]} against entity tokens: {entity_tokens}")
             if tokens[i:i+len(entity_tokens)] == entity_tokens:
                 # Mark the first token as B-TYPE
