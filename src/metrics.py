@@ -1,12 +1,14 @@
+from collections import defaultdict
+from utils import ENTITY_MAP
 from typing import List, Tuple
 
 class Metrics:
     """Simple class to track metrics during streaming."""
     def __init__(self):
-        self.true_positives = 0
-        self.true_negatives = 0
-        self.false_positives = 0
-        self.false_negatives = 0
+        self.true_positives = defaultdict(int)
+        self.true_negatives = defaultdict(int)
+        self.false_positives = defaultdict(int)
+        self.false_negatives = defaultdict(int)
         self.corrected_predictions = 0 # Predictions that were corrected in a subsequent NER execution
         self.time_to_first_detection = 0
         self.invocation_times_count = 0
@@ -30,27 +32,38 @@ class Metrics:
         for i, true_label in enumerate(true_bio):
             if latest_predictions[i] == true_label:
                 if latest_predictions[i] != 'O':
-                    self.true_positives += 1
+                    self.true_positives[true_label] += 1
                 else:
-                    self.true_negatives += 1
+                    self.true_negatives[true_label] += 1
             else:
                 if latest_predictions[i] != 'O':
-                    print(f"False positive at index {i}: predicted {latest_predictions[i]}, true {true_label}, for token '{tokens[i]}' ({tokens})")
-                    self.false_positives += 1
+                    self.false_positives[latest_predictions[i]] += 1
                 else:
-                    print(f"False negative at index {i}: predicted {latest_predictions[i]}, true {true_label}, for token '{tokens[i]}' ({tokens})")
-                    self.false_negatives += 1
+                    self.false_negatives[true_label] += 1
         # If the latest prediction run is shorter than the true BIO tags, we have false negatives unless there are no further entities
         if len(true_bio) > len(latest_predictions):
             for i in range(len(latest_predictions), len(true_bio)):
                 if true_bio[i] != 'O':
-                    self.false_negatives += 1
+                    self.false_negatives[true_bio[i]] += 1
 
         # TODO evaluate corrected predictions
         # TODO evaluate time to first detection
 
     def print_metrics(self):
-        print(f"True Positives: {self.true_positives}")
-        print(f"True Negatives: {self.true_negatives}")
-        print(f"False Positives: {self.false_positives}")
-        print(f"False Negatives: {self.false_negatives}")
+        print("Metrics:")
+        print(f"Total NER invocations: {self.invocation_times_count}")
+        # Print table with entity types and their counts
+        print(f"{'Entity Type':<20} {'TP':<10} {'TN':<10} {'FP':<10} {'FN':<10}")
+        print("-" * 60)
+        entity_types = list(ENTITY_MAP.values())
+        # NOTE: dslim/bert-base-NER throws some NER categories into a MISC bucket instead of their specific categories
+        #       so we add MISC to the list of entity types to ensure we print it
+        entity_types.extend(['B-MISC', 'I-MISC'])
+        for entity_type in entity_types:
+            tp = self.true_positives[entity_type]
+            tn = self.true_negatives[entity_type]
+            fp = self.false_positives[entity_type]
+            fn = self.false_negatives[entity_type]
+            print(f"{entity_type:<20} {tp:<10} {tn:<10} {fp:<10} {fn:<10}")
+        print(f"{'Total':<20} {sum(self.true_positives.values()):<10} {sum(self.true_negatives.values()):<10} {sum(self.false_positives.values()):<10} {sum(self.false_negatives.values()):<10}")
+        print("-" * 60)
