@@ -1,6 +1,6 @@
 from collections import defaultdict
 from utils import ENTITY_MAP
-from typing import List, Tuple
+from typing import List, Tuple, Set
 
 class Metrics:
     """Simple class to track metrics during streaming."""
@@ -12,7 +12,7 @@ class Metrics:
         self.false_positives_bucket = (defaultdict(int), defaultdict(int))  # (B-MISC, I-MISC)
         self.false_negatives = defaultdict(int)
         self.corrected_predictions = 0 # Predictions that were corrected in a subsequent NER execution
-        self.time_to_first_detection = 0
+        self.time_to_first_detection = []
         self.invocation_times_count = 0
 
     """Evaluates metrics for a sentence or document, given by its true BIO tags and 
@@ -63,11 +63,62 @@ class Metrics:
                     self.false_negatives[true_bio[i]] += 1
 
         # TODO evaluate corrected predictions
-        # TODO evaluate time to first detection
 
+        # Evaluating time to first detection
+        true_entities: Set[Tuple[int, int, str]] = set()
+        i = 0
+        while i < len(true_bio):
+            if true_bio[i].startswith('B-'):
+                start_idx = i
+                entity_type = true_bio[i]
+                i += 1
+                # Find the end of this entity
+                while i < len(true_bio) and true_bio[i] == f"I-{entity_type[2:]}":
+                    i += 1
+                end_idx = i - 1
+                true_entities.add((start_idx, end_idx, entity_type))
+            else:
+                i += 1
+
+        for pred_bio in pred_bio_runs:
+            # len(pred_bio_runs) is the number of NER execution times and len(pred_bio_runs[i])
+            # is the number of tokens in the sentence or document at execution time.
+            detected_entities: Set[Tuple[int, int, str]] = set()
+            actual_detection_time = len(pred_bio) - 1
+
+            # Check if any entities are correctly detected for the first time in this run
+            for start_idx, end_idx, entity_type in true_entities:
+                entity_key = (start_idx, end_idx, entity_type)
+                
+                # Skip if prediction is too short
+                if end_idx > actual_detection_time:
+                    continue
+                
+                # Check if the entire entity is correctly predicted
+                entity_correctly_predicted = True
+                for pos in range(start_idx, end_idx + 1):
+                    if pos == start_idx:
+                        expected_tag = entity_type
+                    else:
+                        expected_tag = f"I-{entity_type[2:]}"
+                    
+                    if pred_bio[pos] != expected_tag:
+                        entity_correctly_predicted = False
+                        break
+                
+                if entity_correctly_predicted:
+                    detected_entities.add(entity_key)
+                    time_diff = actual_detection_time - end_idx
+                    self.time_to_first_detection.append(time_diff)
+        
+            # Removing already detected entities from true_entities to not process them again
+            true_entities -= detected_entities
+        
     def print_metrics(self):
         print("Metrics:")
         print(f"Total NER invocations: {self.invocation_times_count}")
+        avg_ttfd = f"{sum(self.time_to_first_detection) / len(self.time_to_first_detection):.2f}" if self.time_to_first_detection else 'N/A'
+        print(f"Avg TTFD: {avg_ttfd}")
         # Print table with entity types and their counts
         print(f"{'Entity Type':<20} {'TP':<10} {'TN':<10} {'FP (#B-/I-MISC)':<20} {'FN':<10}")
         print("-" * 70)
