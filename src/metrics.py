@@ -1,6 +1,8 @@
 from collections import defaultdict
 from utils import ENTITY_MAP
 from typing import List, Tuple, Set
+import pickle
+import os
 
 class Metrics:
     """Simple class to track metrics during streaming."""
@@ -150,3 +152,40 @@ class Metrics:
     def _format_highlight(text: str) -> str:
         """Highlight the text in a way that is suitable for printing."""
         return f"*{text}*?!"
+    
+    def save_metrics(self, filename: str):
+        """Save all metrics data to a file."""
+        metrics_data = {
+            'true_positives': dict(self.true_positives),
+            'true_negatives': dict(self.true_negatives),
+            'false_positives': dict(self.false_positives),
+            'catch_all_entities': self.catch_all_entities,
+            'false_positives_bucket': (dict(self.false_positives_bucket[0]), dict(self.false_positives_bucket[1])),
+            'false_negatives': dict(self.false_negatives),
+            'corrected_predictions': self.corrected_predictions,
+            'time_to_first_detection': self.time_to_first_detection,
+            'invocation_times_count': self.invocation_times_count
+        }
+
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
+
+        with open(filename, 'wb') as f:
+            pickle.dump(metrics_data, f)
+
+    def load_metrics(self, filename: str):
+        """Load all metrics data from a file."""
+        with open(filename, 'rb') as f:
+            metrics_data = pickle.load(f)
+        
+        self.true_positives = defaultdict(int, metrics_data['true_positives'])
+        self.true_negatives = defaultdict(int, metrics_data['true_negatives'])
+        self.false_positives = defaultdict(int, metrics_data['false_positives'])
+        self.catch_all_entities = metrics_data['catch_all_entities']
+        self.false_positives_bucket = (
+            defaultdict(int, metrics_data['false_positives_bucket'][0]),
+            defaultdict(int, metrics_data['false_positives_bucket'][1])
+        )
+        self.false_negatives = defaultdict(int, metrics_data['false_negatives'])
+        self.corrected_predictions = metrics_data['corrected_predictions']
+        self.time_to_first_detection = metrics_data['time_to_first_detection']
+        self.invocation_times_count = metrics_data['invocation_times_count']
