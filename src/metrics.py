@@ -6,10 +6,14 @@ import os
 
 class Metrics:
     """Simple class to track metrics during streaming."""
-    def __init__(self, entity_bucket_name: str = 'MISC'):
+    def __init__(self, known_entities: List[str] = ["PER", "ORG", "LOC"], entity_bucket_name: str = 'MISC'):
         self.true_positives = defaultdict(int)
         self.true_negatives = defaultdict(int)
         self.false_positives = defaultdict(int)
+        self.classified_entities = []
+        for entity_type in known_entities:
+            self.classified_entities.append(f"B-{entity_type}")
+            self.classified_entities.append(f"I-{entity_type}")
         self.catch_all_entities = [f"B-{entity_bucket_name}", f"I-{entity_bucket_name}"]
         self.false_positives_bucket = (defaultdict(int), defaultdict(int))  # (B-MISC, I-MISC)
         self.false_negatives = defaultdict(int)
@@ -52,7 +56,7 @@ class Metrics:
                     else:
                         # y is NER X and y_hat is NER Y
                         self.false_positives[true_label] += 1
-                        if latest_predictions[i] in self.catch_all_entities:
+                        if true_label not in self.classified_entities and latest_predictions[i] in self.catch_all_entities:
                             index = 0 if latest_predictions[i].startswith('B-') else 1
                             # If the false positive is a catch-all entity, we count it separately
                             self.false_positives_bucket[index][true_label] += 1
@@ -100,11 +104,17 @@ class Metrics:
                 entity_correctly_predicted = True
                 for pos in range(start_idx, end_idx + 1):
                     if pos == start_idx:
-                        expected_tag = entity_type
+                        if entity_type in self.classified_entities:
+                            expected_tag = [entity_type]
+                        else:
+                            expected_tag = [entity_type, self.catch_all_entities[0]]
                     else:
-                        expected_tag = f"I-{entity_type[2:]}"
+                        if entity_type in self.classified_entities:
+                            expected_tag = [f"I-{entity_type[2:]}"]
+                        else:
+                            expected_tag = [f"I-{entity_type[2:]}", self.catch_all_entities[1]]
                     
-                    if pred_bio[pos] != expected_tag:
+                    if pred_bio[pos] not in expected_tag:
                         entity_correctly_predicted = False
                         break
                 
