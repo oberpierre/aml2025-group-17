@@ -193,3 +193,4 @@ dataset/
 
 # Excluding too large files
 ner_trigger_dataset.npz
+ontonotes_embeddings_*.npz
