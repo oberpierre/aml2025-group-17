@@ -4,10 +4,12 @@ from typing import List, Tuple
 
 class Metrics:
     """Simple class to track metrics during streaming."""
-    def __init__(self):
+    def __init__(self, entity_bucket_name: str = 'MISC'):
         self.true_positives = defaultdict(int)
         self.true_negatives = defaultdict(int)
         self.false_positives = defaultdict(int)
+        self.catch_all_entities = [f"B-{entity_bucket_name}", f"I-{entity_bucket_name}"]
+        self.false_positives_bucket = (defaultdict(int), defaultdict(int))  # (B-MISC, I-MISC)
         self.false_negatives = defaultdict(int)
         self.corrected_predictions = 0 # Predictions that were corrected in a subsequent NER execution
         self.time_to_first_detection = 0
@@ -42,8 +44,17 @@ class Metrics:
                     # y is a NER and y_hat is 'O'
                     self.false_negatives[true_label] += 1
                 else: # false positive
-                    # y is a 'O' or NER X and y_hat is a NER Y
-                    self.false_positives[true_label] += 1
+                    if true_label == 'O':
+                        # y is 'O' and y_hat is a NER
+                        self.false_positives[true_label] += 1
+                    else:
+                        # y is NER X and y_hat is NER Y
+                        self.false_positives[true_label] += 1
+                        if latest_predictions[i] in self.catch_all_entities:
+                            index = 0 if latest_predictions[i].startswith('B-') else 1
+                            # If the false positive is a catch-all entity, we count it separately
+                            self.false_positives_bucket[index][true_label] += 1
+
 
         # If the latest prediction run is shorter than the true BIO tags, we have false negatives unless there are no further entities
         if len(true_bio) > len(latest_predictions):
@@ -58,8 +69,8 @@ class Metrics:
         print("Metrics:")
         print(f"Total NER invocations: {self.invocation_times_count}")
         # Print table with entity types and their counts
-        print(f"{'Entity Type':<20} {'TP':<10} {'TN':<10} {'FP':<10} {'FN':<10}")
-        print("-" * 60)
+        print(f"{'Entity Type':<20} {'TP':<10} {'TN':<10} {'FP (#B-/I-MISC)':<20} {'FN':<10}")
+        print("-" * 70)
         for entity_type in list(ENTITY_MAP.values()):
             tp = self.true_positives[entity_type]
             tn = self.true_negatives[entity_type]
@@ -73,10 +84,16 @@ class Metrics:
             else:
                 # if true entity is not 'O' (positive) -> there cannot be true negatives
                 tn = self._format_highlight(str(tn)) if tn > 0 else "N/A"
-            
-            print(f"{entity_type:<20} {tp:<10} {tn:<10} {fp:<10} {fn:<10}")
-        print(f"{'Total':<20} {sum(self.true_positives.values()):<10} {sum(self.true_negatives.values()):<10} {sum(self.false_positives.values()):<10} {sum(self.false_negatives.values()):<10}")
-        print("-" * 60)
+
+            # Displaying false positives for catch-all entities separately in format: "{false_positive} ({B-catch_all_entity}/I-catch_all_entity})"
+            bucket_entities = self.false_positives_bucket[0][entity_type], self.false_positives_bucket[1][entity_type]
+            fp_display = f"{fp} ({bucket_entities[0]}/{bucket_entities[1]})" if bucket_entities[0] + bucket_entities[1] > 0 else str(fp)
+
+            print(f"{entity_type:<20} {tp:<10} {tn:<10} {fp_display:<20} {fn:<10}")
+
+        total_fp_display = f"{sum(self.false_positives.values())} ({sum(self.false_positives_bucket[0].values())}/{sum(self.false_positives_bucket[1].values())})"
+        print(f"{'Total':<20} {sum(self.true_positives.values()):<10} {sum(self.true_negatives.values()):<10} {total_fp_display:<20} {sum(self.false_negatives.values()):<10}")
+        print("-" * 70)
 
     @staticmethod
     def _format_highlight(text: str) -> str:
