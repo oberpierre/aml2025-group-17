@@ -192,4 +192,4 @@ cython_debug/
 dataset/
 
 # Excluding too large files
-ner_trigger_dataset.npz
+data
