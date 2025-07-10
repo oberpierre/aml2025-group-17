@@ -6,7 +6,7 @@ import os
 
 class Metrics:
     """Simple class to track metrics during streaming."""
-    def __init__(self, known_entities: List[str] = ["PER", "ORG", "LOC"], entity_bucket_name: str = 'MISC'):
+    def __init__(self, known_entities: List[str] = ["PERSON", "ORG", "LOC"], entity_bucket_name: str = 'MISC'):
         self.true_positives = defaultdict(int)
         self.true_negatives = defaultdict(int)
         self.false_positives = defaultdict(int)
@@ -36,8 +36,12 @@ class Metrics:
         self.invocation_times_count += len(pred_bio_runs)
 
         # Go through latest prediction run and count true positives, true negatives, false positives, and false negatives
-        latest_predictions = pred_bio_runs[-1]
+        # Copy the latest predictions to avoid modifying the original list for our hacky PERSON rectification
+        latest_predictions = pred_bio_runs[-1].copy()
         for i, true_label in enumerate(true_bio):
+            # NER model used classifies B-/I-PERSON as B-/I-PER, so we need to handle this case
+            if latest_predictions[i].endswith('PER'):
+                latest_predictions[i] = latest_predictions[i].replace('PER', 'PERSON')
             if latest_predictions[i] == true_label:
                 if true_label == 'O':
                     # y and y_hat are 'O'
@@ -105,12 +109,19 @@ class Metrics:
                 for pos in range(start_idx, end_idx + 1):
                     if pos == start_idx:
                         if entity_type in self.classified_entities:
-                            expected_tag = [entity_type]
+                            if entity_type.endswith('PERSON'):
+                                # Handle the PERSON rectification case
+                                expected_tag = [f"B-PER"]
+                            else:
+                                expected_tag = [entity_type]
                         else:
                             expected_tag = [entity_type, self.catch_all_entities[0]]
                     else:
                         if entity_type in self.classified_entities:
-                            expected_tag = [f"I-{entity_type[2:]}"]
+                            if entity_type.endswith('PERSON'):
+                                expected_tag = [f"I-PER"]
+                            else:
+                                expected_tag = [f"I-{entity_type[2:]}"]
                         else:
                             expected_tag = [f"I-{entity_type[2:]}", self.catch_all_entities[1]]
                     
