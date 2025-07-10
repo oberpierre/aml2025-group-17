@@ -136,12 +136,29 @@ class Metrics:
         
             # Removing already detected entities from true_entities to not process them again
             true_entities -= detected_entities
-        
+    
+    def _calculate_fpr(self) -> float:
+        """Calculate False Positive Rate (FPR) over all entity types."""
+        total_fp = sum(self.false_positives.values())
+        total_tn = sum(self.true_negatives.values())
+        if total_fp + total_tn == 0:
+            return 0.0
+        return total_fp / (total_fp + total_tn)
+
+    def _calculate_fnr(self) -> float:
+        """Calculate False Negative Rate (FNR) over all entity types."""
+        total_fn = sum(self.false_negatives.values())
+        total_tp = sum(self.true_positives.values())
+        if total_fn + total_tp == 0:
+            return 0.0
+        return total_fn / (total_fn + total_tp)
+
     def print_metrics(self):
         print("Metrics:")
         print(f"Total NER invocations: {self.invocation_times_count}")
         avg_ttfd = f"{sum(self.time_to_first_detection) / len(self.time_to_first_detection):.2f}" if self.time_to_first_detection else 'N/A'
         print(f"Avg TTFD: {avg_ttfd}")
+        print(f"FPR@FNR: {self._calculate_fpr():.4f}@{self._calculate_fnr():.4f}")
         # Print table with entity types and their counts
         print(f"{'Entity Type':<20} {'TP':<10} {'TN':<10} {'FP (#B-/I-MISC)':<20} {'FN':<10}")
         print("-" * 70)
