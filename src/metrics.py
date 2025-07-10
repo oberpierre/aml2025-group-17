@@ -137,9 +137,29 @@ class Metrics:
             # Removing already detected entities from true_entities to not process them again
             true_entities -= detected_entities
     
+    def _calculate_fp(self) -> int:
+        """Calculate False Positives (FP) over all entity types."""
+        total_fp = sum(self.false_positives.values())
+        # Some false positive are not really false positives, but have been classified in the catch-all entity bucket
+        # as such we should subtract them from the total false positives
+        for entity_type in ENTITY_MAP.values():
+            entity_fp = self.false_positives[entity_type]
+            # we subtract at most the false positives in the catch-all buckets but not more than the total false positives
+            ix = 0 if entity_type.startswith('B-') else 1
+            total_fp -= min(entity_fp, self.false_positives_bucket[ix][entity_type])
+        return total_fp
+    
+    def _calculate_tp(self) -> int:
+        """Calculate True Positives (TP) over all entity types."""
+        total_tp = sum(self.true_positives.values())
+        # We need to rectify the true positives by the difference of evaluated false positives to calculated false positives
+        # because some false positives are actually detected entities classified in the catch-all entity bucket
+        rectified_fp = sum(self.false_positives.values()) - self._calculate_fp()
+        return total_tp + rectified_fp
+
     def _calculate_fpr(self) -> float:
         """Calculate False Positive Rate (FPR) over all entity types."""
-        total_fp = sum(self.false_positives.values())
+        total_fp = self._calculate_fp()
         total_tn = sum(self.true_negatives.values())
         if total_fp + total_tn == 0:
             return 0.0
@@ -148,7 +168,7 @@ class Metrics:
     def _calculate_fnr(self) -> float:
         """Calculate False Negative Rate (FNR) over all entity types."""
         total_fn = sum(self.false_negatives.values())
-        total_tp = sum(self.true_positives.values())
+        total_tp = self._calculate_tp()
         if total_fn + total_tp == 0:
             return 0.0
         return total_fn / (total_fn + total_tp)
