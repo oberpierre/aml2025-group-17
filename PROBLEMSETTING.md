@@ -1,76 +1,121 @@
-We want to address the problem of Named Entity Recognition (NER) in a (near-)real-time setting, where the input sequence $\mathbf{X}_{0:t} = \langle x_0, x_1, \dots, x_t \rangle$ arrives incrementally over time. At each time step $t$, only the first $t + 1$ tokens are available. Our goal is to identify named entities (e.g., persons, locations) from this partial input as early as possible, rather than waiting for the full sequence to arrive.
+# Real-Time Named Entity Recognition with Selective Inference
 
-This setting simulates real-world scenarios such as transcribed emergency calls, where timely identification of critical information — like the caller's name, location, or the nature of the incident — can greatly assist the operator. In this context, latency and computation budget are as important as accuracy.
+This project addresses **Named Entity Recognition (NER)** in a **streaming / real-time** setting. The input sequence $\mathbf{X}_{0:t} = \langle x_0, x_1, \dots, x_t \rangle$
+arrives token by token. At each time step $t$, the system only sees the partial input and must decide:
 
-We propose two *non-RL* selective‐inference strategies. At each step $t$, given the prefix $\mathbf{X}_{0:t}$, the system decides whether to:
+- Should we **invoke NER now**?
+- Or should we **wait** for more context?
 
-* **WAIT** — continue accumulating input; or  
-* **RUN_NER** — invoke the NER module and extract entities from $\mathbf{X}_{0:t}$.
+This simulates real-world applications like:
+- **Emergency call transcription**
+- **Voice assistant pipelines**
+- **Low-latency document analysis**
 
----
-
-## Dataset & Data Splitting
-
-* **Dataset:** OntoNotes 5.0 (english_v12 portion).  
-* ⁠We are using the dataset as provided by Hugging Face, which already incorporates a **Document-level split** of:
-  * **Training:** 80%
-  * **Validation:** 10%  
-  * **Test:** 10%  
-* **Streaming simulation:** within each split, reveal tokens one by one; any decision at time $t$ uses only $\mathbf{X}_{0:t}$.
-* ⁠**Hyperparameter tuning** (e.g. confidence threshold $\tau$, $\varepsilon$) is performed on *Validation*; final results reported on *Test*.
+In these scenarios, identifying entities (like locations, names) **early** can be as critical as being accurate — with constraints on **latency** and **computation**.
 
 ---
 
-## Non-RL Alternatives
+## Dataset & Streaming Setup
 
-### 1. Confidence-Thresholding  
-* Train a lightweight *scorer* $s(\mathbf{X}_{0:t})$ (e.g. a small feed-forward head over current token embeddings) that predicts the model’s confidence in its tags.  
-* *Rule:* if $s(\mathbf{X}_{0:t}) < \tau$, **RUN_NER**; otherwise **WAIT**.  
-* *Hyperparameter:* confidence threshold $\tau$ selected on Validation to balance early invocation against tagging accuracy.
-
-### 2. Supervised “When-to-Stop” Classifier  
-* *Label construction:* for each prefix $\mathbf{X}_{0:t}$ in the training set, compute its NER F1 versus the full-sequence F1; assign label *1* if within $\varepsilon$, else *0*.  
-* ⁠Train a binary classifier $f(\mathbf{X}_{0:t})\in\{0,1\}$ to predict “good time to invoke NER.”  
-* *Inference:* at time $t$, if $f(\mathbf{X}_{0:t})=1$, **RUN_NER**; otherwise **WAIT**.  
-* ⁠*Hyperparameter:* $\varepsilon$ (and any classifier decision threshold) tuned on Validation.
-
----
-
-### Formal Objective
-
-Let $y_t$ be the ground-truth NER tags and $\hat{y}_t$ the predicted tags when NER is invoked at time $t$. Define $\mathcal{I}_f\subseteq\{0,1,\dots,T\}$ be the set of invocation times determined by the invocation function $f$ (e.g., confidence thresholding or a binary classifier). We seek to minimize
-
-$$
-\mathcal{L}(f) = \sum_{t \in \mathcal{I}_f} \ell_{\mathrm{NER}}(\hat{y}_t, y_t) + \lambda\, C(\mathcal{I}_f),
-$$
-
-where  
-* $\ell_{\mathrm{NER}}$ is the token-level cross-entropy loss,  
-* $⁠C(\mathcal{I})$ penalizes late or frequent invocations (e.g. number of calls, cumulative delay),  
-* $⁠\lambda\ge0$ balances accuracy vs. efficiency.
+- **Dataset:** [OntoNotes 5.0](https://huggingface.co/datasets/conll2012_ontonotesv5) (`english_v12` portion via Hugging Face)
+- **Splits:**
+  - `Train`: 80%
+  - `Validation`: 10%
+  - `Test`: 10%
+- **Streaming Simulation:**
+  - Input revealed **token by token**
+  - At each time step $t$, models only see prefix $\mathbf{X}_{0:t}$.
+- **Validation used for hyperparameter tuning**, **test split** for final evaluation.
 
 ---
 
-## Evaluation
+## Selective Inference Approaches (Non-RL)
 
-### 1. NER Accuracy  
-* *FPR @ FNR ≤ ε:* false positive rate under varying false negative rate thresholds (e.g., FNR ≤ 1% and 0.1%)
-* *Token-level precision, recall*  
-* *Micro and macro averages*, across entity types
+### 1. Confidence-Based Invocation
 
-### 2. Timeliness (Latency-Aware Metrics)  
-* *Time-To-First-Detection (TTFD):* average number of tokens between entity mention start and its first correct prediction  
-* *Coverage @ $t$:* percentage of entities correctly predicted by time $t$
+- Train a **lightweight binary classifier** over BERT [CLS] token embeddings.
+- Task: predict whether a complete entity **ends** at current token.
+- At inference:
+  - If confidence > threshold $\tau$: **RUN NER**
+  - Else: **WAIT**
+- Labels generated from OntoNotes BIO tagging scheme.
+- Tunable threshold $\tau$ selected on validation set.
 
-### 3. Computational Efficiency  
-* ⁠*NER invocations per sequence*  
-* ⁠*Total runtime* or *FLOPs* per document  
-* *Inference overhead* relative to an always-on baseline
+---
 
-### 4. Baselines for Comparison  
-* *Always-on:* run NER at every token  
-* ⁠*Post-hoc:* run NER only at end of sequence $t=T$
-* *Fixed-interval:* run every $k$
-* ⁠*Oracle:* best possible timing (upper bound)
+### 2. Window-Based Trigger Classifier
 
-All methods are evaluated on the *test* split of OntoNotes 5.0, simulating streaming by revealing input token-by-token and measuring how early and accurately each system extracts entities.
+- Slide a **fixed-length window** (e.g. 6 tokens) over the stream.
+- Label windows as `1` if they contain **at least one complete entity**, `0` otherwise.
+- Embedding types explored:
+  - **Static Word Embeddings:** Word2Vec (via `staticvectors`)
+    - Average Pooling
+    - Max Pooling
+  - **Contextual Embeddings:** BERT CLS token
+- Train binary MLP classifier on these embeddings to predict whether NER should be invoked on a window.
+
+---
+
+## Training Pipeline
+
+- Extract streaming prefixes or sliding windows from OntoNotes with entity-end or entity-span labels.
+- Generate embeddings:
+  - **Word2Vec**: fast, local context
+  - **BERT**: contextual, slower
+- Train classifiers using PyTorch (`nn.Linear`-based MLPs), with:
+  - **Weighted loss** for imbalanced labels
+  - **Validation-based threshold tuning**
+
+---
+
+## Evaluation Metrics
+
+### 1. Entity Detection Quality
+
+| Metric                         | Description                                                |
+|-------------------------------|------------------------------------------------------------|
+| **Time-to-First Detection (TTFD)** | Avg. tokens until an entity is correctly predicted         |
+| **Entity Recall @ t**         | Percent of entities detected by time step $t$         |
+| **Entity Completion Accuracy**| Accuracy of classifier in detecting entity ends/spans     |
+
+---
+
+### 2. Computational Efficiency
+
+| Metric                       | Description                                               |
+|-----------------------------|-----------------------------------------------------------|
+| **BERT Calls (Classifier vs Always-On)** | Number of actual NER calls saved |
+| **Reduction %**             | Relative savings in BERT invocations                     |
+| **Inference Overhead**      | Time/cost of running the classifier compared to full NER |
+
+---
+
+### 3. Classifier Performance
+
+| Metric      | Description                     |
+|-------------|---------------------------------|
+| **Precision** | Positive prediction quality     |
+| **Recall**    | True entity detection coverage  |
+| **F1 Score**  | Harmonic mean of P/R            |
+
+---
+
+## Baselines for Comparison
+
+| Baseline         | Description                                                   |
+|------------------|---------------------------------------------------------------|
+| **Always-on**     | Run NER at every time step (upper-bound on accuracy + cost)   |
+| **Post-hoc**      | Run NER only at the final token (minimal compute, high delay) |
+| **Fixed-interval**| Run NER every $k$ tokens regardless of context            |
+| **Oracle**        | Best possible timing for NER invocation (upper-bound)         |
+
+---
+
+## In short
+
+This project explores **efficient NER under streaming constraints**, aiming to invoke NER *only when needed*. By using lightweight classifiers trained on partial input or windows, we:
+- **Reduce unnecessary NER calls**
+- **Maintain high entity detection quality**
+- **Enable low-latency real-time applications**
+
+
