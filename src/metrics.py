@@ -37,8 +37,11 @@ class Metrics:
 
         # Go through latest prediction run and count true positives, true negatives, false positives, and false negatives
         # Copy the latest predictions to avoid modifying the original list for our hacky PERSON rectification
-        latest_predictions = pred_bio_runs[-1].copy()
+        latest_predictions = pred_bio_runs[-1].copy() if len(pred_bio_runs) > 0 else []
         for i, true_label in enumerate(true_bio):
+            if i >= len(latest_predictions):
+                # Skip, remaining tokens counted in loop below
+                continue
             # NER model used classifies B-/I-PERSON as B-/I-PER, so we need to handle this case
             if latest_predictions[i].endswith('PER'):
                 latest_predictions[i] = latest_predictions[i].replace('PER', 'PERSON')
