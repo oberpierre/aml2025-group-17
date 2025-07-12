@@ -48,3 +48,6 @@ def convert_predictions(tokens: List[str], pipeline_output: List[Dict]) -> List[
     
     return predictions
 
+def convert_ids_to_bio(ids: List[int]) -> List[str]:
+    """Convert a list of entity IDs to BIO tags."""
+    return [ENTITY_MAP[id] for id in ids if id in ENTITY_MAP]
